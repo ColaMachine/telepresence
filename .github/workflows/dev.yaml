@@ -105,6 +105,7 @@ jobs:
         run: echo "::set-output name=run_result::success" > run_result
       - uses: ./.github/actions/upload-logs
         if: always()
+        if: steps.run_result.outputs.run_result != 'success'
       - uses: ./.github/actions/cleanup-kluster
         with:
           platform: macos
