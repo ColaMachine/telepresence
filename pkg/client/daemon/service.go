@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"runtime"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -183,6 +186,17 @@ func (d *service) SetLogLevel(ctx context.Context, request *manager.LogLevelRequ
 	return &empty.Empty{}, logging.SetAndStoreTimedLevel(ctx, d.timedLogLevel, request.LogLevel, duration, ProcessName)
 }
 
+func reloadConfig(c context.Context, cfg *client.Config) error {
+	newCfg, err := client.LoadConfig(c)
+	if err != nil {
+		return err
+	}
+	*cfg = *newCfg
+	log.SetLevel(c, cfg.LogLevels.RootDaemon.String())
+	dlog.Info(c, "Configuration reloaded")
+	return nil
+}
+
 // run is the main function when executing as the daemon
 func run(c context.Context, loggingDir, configDir string) error {
 	if !proc.IsAdmin() {
@@ -239,6 +253,24 @@ func run(c context.Context, loggingDir, configDir string) error {
 		EnableSignalHandling: true,
 		ShutdownOnNonError:   true,
 	})
+
+	// Add a SIGHUP reload function. Windows have no support for SIGHUP
+	if runtime.GOOS != "windows" {
+		g.Go("config-reload", func(c context.Context) error {
+			hupCh := make(chan os.Signal, 1)
+			signal.Notify(hupCh, syscall.SIGHUP)
+			for {
+				select {
+				case <-c.Done():
+					return nil
+				case <-hupCh:
+					if err := reloadConfig(c, cfg); err != nil {
+						dlog.Error(c, err)
+					}
+				}
+			}
+		})
+	}
 
 	g.Go("session", func(c context.Context) (err error) {
 		c, d.cancel = context.WithCancel(c)
