@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net"
 
-	"google.golang.org/grpc"
+	"google.golang.org/grpc"  //引入 grpc
 
 	"github.com/telepresenceio/telepresence/rpc/v2/manager"
 )
